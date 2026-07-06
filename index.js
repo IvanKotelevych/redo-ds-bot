@@ -59,7 +59,19 @@ client.on('messageCreate', async (message) => {
                 '--format', 'bestaudio[ext=webm]/bestaudio/best',
                 '--no-warnings',
                 '--prefer-free-formats',
-            ], { stdio: ['ignore', 'pipe', 'ignore'] });
+            ], { stdio: ['ignore', 'pipe', 'pipe'] });
+
+            ytDlpProcess.stderr.on('data', (data) => {
+                console.error(`[yt-dlp stderr]: ${data}`);
+            });
+
+            ytDlpProcess.on('error', (err) => {
+                console.error('[yt-dlp process error]:', err);
+            });
+
+            ytDlpProcess.on('close', (code) => {
+                console.log(`[yt-dlp завершився з кодом]: ${code}`);
+            });
 
             if (!ytDlpProcess.stdout) {
                 throw new Error('Не вдалося отримати потік від yt-dlp');
@@ -68,13 +80,21 @@ client.on('messageCreate', async (message) => {
             const ffmpegProcess = spawn(ffmpeg, [
                 '-i', 'pipe:0',
                 '-analyzeduration', '0',
-                '-loglevel', '0',
+                '-loglevel', 'error',
                 '-f', 's16le',
                 '-ar', '48000',
                 '-ac', '2',
                 'pipe:1',
             ], {
-                stdio: ['pipe', 'pipe', 'ignore'],
+                stdio: ['pipe', 'pipe', 'pipe'],
+            });
+
+            ffmpegProcess.stderr.on('data', (data) => {
+                console.error(`[ffmpeg stderr]: ${data}`);
+            });
+
+            ffmpegProcess.on('close', (code) => {
+                console.log(`[ffmpeg завершився з кодом]: ${code}`);
             });
 
             ytDlpProcess.stdout.pipe(ffmpegProcess.stdin);
@@ -93,6 +113,7 @@ client.on('messageCreate', async (message) => {
             });
 
             player.on(AudioPlayerStatus.Idle, () => {
+                console.log('[player]: перейшов у стан Idle — потік завершився або обірвався');
                 if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
                     connection.destroy();
                 }
