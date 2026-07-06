@@ -3,7 +3,7 @@ const ffmpeg = require('ffmpeg-static');
 const { spawn } = require('child_process');
 const { StreamType } = require('@discordjs/voice');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus } = require('@discordjs/voice');
-const ytDlp = require('youtube-dl-exec'); // Підключаємо "важку артилерію"
+const { spawn } = require('child_process');
 
 // Створюємо клієнта бота
 const client = new Client({
@@ -53,13 +53,14 @@ client.on('messageCreate', async (message) => {
             const cleanUrl = url.split('&')[0];
 
             // Запускаємо yt-dlp для прямого витягування потоку
-            const ytDlpProcess = ytDlp.exec(cleanUrl, {
-                output: '-', // Направляємо аудіопотік прямо в програму (stdout)
-                quiet: true, // Відключаємо зайві текстові логи yt-dlp
-                format: 'bestaudio[ext=webm]/bestaudio/best', // Беремо лише найкраще аудіо (без відео)
-                noWarnings: true,
-                preferFreeFormats: true,
-            }, { stdio: ['ignore', 'pipe', 'ignore'] });
+            const ytDlpProcess = spawn('yt-dlp', [
+                cleanUrl,
+                '--output', '-',
+                '--quiet',
+                '--format', 'bestaudio[ext=webm]/bestaudio/best',
+                '--no-warnings',
+                '--prefer-free-formats',
+            ], { stdio: ['ignore', 'pipe', 'ignore'] });
 
             if (!ytDlpProcess.stdout) {
                 throw new Error('Не вдалося отримати потік від yt-dlp');
