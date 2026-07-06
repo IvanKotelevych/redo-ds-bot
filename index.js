@@ -7,7 +7,8 @@ const { StreamType } = require('@discordjs/voice');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus } = require('@discordjs/voice');
 
 if (process.env.YOUTUBE_COOKIES) {
-    fs.writeFileSync(path.join(__dirname, 'cookies.txt'), process.env.YOUTUBE_COOKIES);
+    const decoded = Buffer.from(process.env.YOUTUBE_COOKIES, 'base64').toString('utf-8');
+    fs.writeFileSync(path.join(__dirname, 'cookies.txt'), decoded);
 }
 
 // Створюємо клієнта бота
