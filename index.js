@@ -6,9 +6,16 @@ const { spawn } = require('child_process');
 const { StreamType } = require('@discordjs/voice');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus } = require('@discordjs/voice');
 
+const cookiesPath = path.join(__dirname, 'cookies.txt');
+
 if (process.env.YOUTUBE_COOKIES) {
     const decoded = Buffer.from(process.env.YOUTUBE_COOKIES, 'base64').toString('utf-8');
-    fs.writeFileSync(path.join(__dirname, 'cookies.txt'), decoded);
+    fs.writeFileSync(cookiesPath, decoded);
+    console.log('[cookies] Файл записано, розмір:', fs.statSync(cookiesPath).size, 'байт');
+    console.log('[cookies] Перший рядок:', decoded.split('\n')[0]);
+    console.log('[cookies] Кількість рядків:', decoded.split('\n').length);
+} else {
+    console.log('[cookies] ЗМІННА YOUTUBE_COOKIES ВІДСУТНЯ!');
 }
 
 // Створюємо клієнта бота
@@ -59,14 +66,18 @@ client.on('messageCreate', async (message) => {
             const cleanUrl = url.split('&')[0];
 
             // Запускаємо yt-dlp для прямого витягування потоку
-            const ytDlpProcess = spawn('yt-dlp', [
+            const args = [
                 cleanUrl,
                 '--output', '-',
                 '--quiet',
                 '--format', 'bestaudio[ext=webm]/bestaudio/best',
                 '--no-warnings',
                 '--prefer-free-formats',
-            ], { stdio: ['ignore', 'pipe', 'pipe'] });
+                '--cookies', cookiesPath,
+            ];
+            console.log('[yt-dlp аргументи]:', args); // ← додай цей лог
+
+            const ytDlpProcess = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
             ytDlpProcess.stderr.on('data', (data) => {
                 console.error(`[yt-dlp stderr]: ${data}`);
