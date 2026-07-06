@@ -3,7 +3,6 @@ const ffmpeg = require('ffmpeg-static');
 const { spawn } = require('child_process');
 const { StreamType } = require('@discordjs/voice');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus } = require('@discordjs/voice');
-const { spawn } = require('child_process');
 
 // Створюємо клієнта бота
 const client = new Client({
