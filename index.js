@@ -1,4 +1,3 @@
-require('dotenv').config();
 const { Client, GatewayIntentBits, Events } = require('discord.js');
 const ffmpeg = require('ffmpeg-static');
 const { spawn } = require('child_process');
