@@ -95,6 +95,7 @@ function playSong(guildId, song) {
         '--no-warnings',
         '--prefer-free-formats',
         '--cookies', cookiesPath,
+        '--extractor-args', 'youtube:player_client=ios,web',
     ];
 
     const ytDlpProcess = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -146,6 +147,7 @@ function fetchPlaylistEntries(playlistUrl) {
             '--no-warnings',
             '--quiet',
             '--cookies', cookiesPath,
+            '--extractor-args', 'youtube:player_client=ios,web',
         ];
 
         const proc = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'] });
