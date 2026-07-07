@@ -35,7 +35,6 @@ const TOKEN = process.env.DISCORD_TOKEN;
 const PREFIX = '!';
 
 // ==== Черги по серверах (guildId -> queue) ====
-// queue = { connection, player, songs: [{ url, title }], textChannel, voiceChannel }
 const queues = new Map();
 
 function getQueue(guildId) {
@@ -56,12 +55,10 @@ function createQueue(guildId, connection, textChannel, voiceChannel) {
     connection.subscribe(player);
 
     player.on(AudioPlayerStatus.Idle, () => {
-        // Поточна пісня закінчилась (або її скіпнули) — граємо наступну
         queue.songs.shift();
         if (queue.songs.length > 0) {
             playSong(guildId, queue.songs[0]);
         } else {
-            // Черга порожня — виходимо з каналу
             if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
                 connection.destroy();
             }
@@ -133,11 +130,17 @@ function playSong(guildId, song) {
     queue.textChannel.send(`🎵 Відтворення розпочато: **${song.title}**`);
 }
 
+// Витягує ID плейлиста з посилання (параметр list=...)
+function extractPlaylistId(url) {
+    const match = url.match(/[?&]list=([^&]+)/);
+    return match ? match[1] : null;
+}
+
 // Витягує список відео з плейлиста без завантаження (--flat-playlist --dump-json)
-function fetchPlaylistEntries(url) {
+function fetchPlaylistEntries(playlistUrl) {
     return new Promise((resolve, reject) => {
         const args = [
-            url,
+            playlistUrl,
             '--flat-playlist',
             '--dump-json',
             '--no-warnings',
@@ -191,6 +194,26 @@ function fetchSingleTitle(url) {
     });
 }
 
+function ensureQueue(guildId, voiceChannel, textChannel, message) {
+    let queue = getQueue(guildId);
+    if (!queue) {
+        const connection = joinVoiceChannel({
+            channelId: voiceChannel.id,
+            guildId,
+            adapterCreator: message.guild.voiceAdapterCreator,
+        });
+        queue = createQueue(guildId, connection, textChannel, voiceChannel);
+    }
+    return queue;
+}
+
+function maybeStartPlaying(guildId, queue) {
+    if (queue.songs.length >= 1 && queue.player.state.status !== AudioPlayerStatus.Playing
+        && queue.player.state.status !== AudioPlayerStatus.Paused) {
+        playSong(guildId, queue.songs[0]);
+    }
+}
+
 client.once(Events.ClientReady, () => {
     console.log(`🤖 Бот успішно запущений як ${client.user.tag}!`);
 });
@@ -202,18 +225,18 @@ client.on('messageCreate', async (message) => {
     const command = args.shift().toLowerCase();
     const guildId = message.guild.id;
 
+    // ===== !play — ЗАВЖДИ лише одне відео, навіть якщо в посиланні є list= =====
     if (command === 'play') {
         const url = args[0];
         const voiceChannel = message.member.voice.channel;
         let queue = getQueue(guildId);
 
-        // !play без посилання — продовжити з паузи
         if (!url) {
             if (queue && queue.player.state.status === AudioPlayerStatus.Paused) {
                 queue.player.unpause();
                 return message.reply('▶️ Відтворення продовжено.');
             }
-            return message.reply('❌ Вкажи посилання на YouTube відео/плейлист, або спочатку постав щось на паузу.');
+            return message.reply('❌ Вкажи посилання на YouTube відео, або спочатку постав щось на паузу.');
         }
 
         if (!voiceChannel) {
@@ -221,50 +244,71 @@ client.on('messageCreate', async (message) => {
         }
 
         try {
-            // Створюємо чергу і з'єднання, якщо їх ще немає
-            if (!queue) {
-                const connection = joinVoiceChannel({
-                    channelId: voiceChannel.id,
-                    guildId,
-                    adapterCreator: message.guild.voiceAdapterCreator,
-                });
-                queue = createQueue(guildId, connection, message.channel, voiceChannel);
+            queue = ensureQueue(guildId, voiceChannel, message.channel, message);
+
+            // Прибираємо всі зайві параметри (в т.ч. list=), щоб гарантовано взяти лише одне відео
+            const videoIdMatch = url.match(/(?:v=|youtu\.be\/)([^&]+)/);
+            const cleanUrl = videoIdMatch
+                ? `https://www.youtube.com/watch?v=${videoIdMatch[1]}`
+                : url.split('&')[0];
+
+            const wasEmpty = queue.songs.length === 0;
+            if (!wasEmpty) {
+                message.reply('⏳ Додаю трек у чергу...');
             }
 
-            const isPlaylist = url.includes('list=');
+            const title = await fetchSingleTitle(cleanUrl);
+            queue.songs.push({ url: cleanUrl, title });
 
-            if (isPlaylist) {
-                message.reply('⏳ Обробляю плейлист, зачекай секунду...');
-                const entries = await fetchPlaylistEntries(url);
-                if (entries.length === 0) {
-                    return message.reply('❌ Не вдалося знайти треки в цьому плейлисті.');
-                }
-                queue.songs.push(...entries);
-                message.channel.send(`📜 Додано в чергу **${entries.length}** треків з плейлиста.`);
-            } else {
-                const cleanUrl = url.split('&')[0];
-                const wasEmpty = queue.songs.length === 0;
-
-                if (!wasEmpty) {
-                    message.reply('⏳ Додаю трек у чергу...');
-                }
-
-                const title = await fetchSingleTitle(cleanUrl);
-                queue.songs.push({ url: cleanUrl, title });
-
-                if (!wasEmpty) {
-                    message.channel.send(`➕ Додано в чергу: **${title}**`);
-                }
+            if (!wasEmpty) {
+                message.channel.send(`➕ Додано в чергу: **${title}**`);
             }
 
-            // Якщо це перший трек у черзі — починаємо відтворення
-            if (queue.songs.length >= 1 && queue.player.state.status !== AudioPlayerStatus.Playing
-                && queue.player.state.status !== AudioPlayerStatus.Paused) {
-                playSong(guildId, queue.songs[0]);
-            }
+            maybeStartPlaying(guildId, queue);
         } catch (error) {
             console.error('Помилка під час відтворення:', error);
             message.reply('❌ Виникла помилка під час спроби відтворити аудіо.');
+        }
+    }
+
+    // ===== !playlist — намагається знайти саме плейлист по посиланню =====
+    if (command === 'playlist') {
+        const url = args[0];
+        const voiceChannel = message.member.voice.channel;
+
+        if (!url) {
+            return message.reply('❌ Вкажи посилання на YouTube плейлист. Приклад: `!playlist URL`');
+        }
+
+        if (!voiceChannel) {
+            return message.reply('❌ Тобі потрібно спочатку зайти в будь-який голосовий канал!');
+        }
+
+        const playlistId = extractPlaylistId(url);
+        if (!playlistId) {
+            return message.reply('❌ У цьому посиланні немає плейлиста (параметр `list=` відсутній).');
+        }
+
+        try {
+            const queue = ensureQueue(guildId, voiceChannel, message.channel, message);
+
+            message.reply('⏳ Обробляю плейлист, зачекай секунду...');
+
+            // Формуємо чисте посилання саме на плейлист, без прив'язки до конкретного відео
+            const playlistUrl = `https://www.youtube.com/playlist?list=${playlistId}`;
+            const entries = await fetchPlaylistEntries(playlistUrl);
+
+            if (entries.length === 0) {
+                return message.reply('❌ Не вдалося знайти треки в цьому плейлисті.');
+            }
+
+            queue.songs.push(...entries);
+            message.channel.send(`📜 Додано в чергу **${entries.length}** треків з плейлиста.`);
+
+            maybeStartPlaying(guildId, queue);
+        } catch (error) {
+            console.error('Помилка під час обробки плейлиста:', error);
+            message.reply('❌ Виникла помилка під час спроби обробити плейлист.');
         }
     }
 
@@ -274,7 +318,7 @@ client.on('messageCreate', async (message) => {
             return message.reply('❌ Зараз нічого не грає.');
         }
         message.reply('⏭️ Пропускаю трек...');
-        queue.player.stop(); // це викличе Idle -> playNext автоматично
+        queue.player.stop();
     }
 
     if (command === 'pause') {
