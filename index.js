@@ -91,7 +91,7 @@ function playSong(guildId, song) {
         song.url,
         '--output', '-',
         '--quiet',
-        '--format', 'bestaudio[ext=webm]/bestaudio/best',
+        '--format', 'bestaudio/best',
         '--no-warnings',
         '--prefer-free-formats',
         '--cookies', cookiesPath,
@@ -181,7 +181,7 @@ function fetchPlaylistEntries(playlistUrl) {
 // Дістає назву одного відео (для відображення в черзі)
 function fetchSingleTitle(url) {
     return new Promise((resolve) => {
-        const args = ['--dump-json', '--no-warnings', '--quiet', '--cookies', cookiesPath, url];
+        const args = ['--dump-json', '--no-warnings', '--quiet', '--cookies', cookiesPath, url, '--extractor-args', 'youtube:player_client=android,web',];
         const proc = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'ignore'] });
         let stdout = '';
         proc.stdout.on('data', (data) => { stdout += data; });
