@@ -258,7 +258,6 @@ client.on('messageCreate', async (message) => {
     const command = args.shift().toLowerCase();
     const guildId = message.guild.id;
 
-    // ===== !play — ЗАВЖДИ лише одне відео, навіть якщо в посиланні є list= =====
     if (command === 'play') {
         const url = args[0];
         const voiceChannel = message.member.voice.channel;
@@ -304,7 +303,6 @@ client.on('messageCreate', async (message) => {
         }
     }
 
-    // ===== !playlist — намагається знайти саме плейлист по посиланню =====
     if (command === 'playlist') {
         const url = args[0];
         const voiceChannel = message.member.voice.channel;
@@ -327,9 +325,9 @@ client.on('messageCreate', async (message) => {
 
             message.reply('⏳ Обробляю плейлист, зачекай секунду...');
 
-            // Формуємо чисте посилання саме на плейлист, без прив'язки до конкретного відео
-            const playlistUrl = `https://www.youtube.com/playlist?list=${playlistId}`;
-            const entries = await fetchPlaylistEntries(playlistUrl);
+            // Передаємо ОРИГІНАЛЬНИЙ url — потрібно для Mix/Radio-плейлистів (RD...),
+            // які вимагають контексту v= разом з list=
+            const entries = await fetchPlaylistEntries(url);
 
             if (entries.length === 0) {
                 return message.reply('❌ Не вдалося знайти треки в цьому плейлисті.');
@@ -340,8 +338,8 @@ client.on('messageCreate', async (message) => {
 
             maybeStartPlaying(guildId, queue);
         } catch (error) {
-            console.error('Помилка під час обробки плейлиста:', error);
-            message.reply('❌ Виникла помилка під час спроби обробити плейлист.');
+            console.error('Помилка під час обробки плейлиста:', error.message);
+            message.reply('❌ Не вдалося обробити цей плейлист (можливо, це особливий тип плейлиста YouTube, який не підтримується).');
         }
     }
 
