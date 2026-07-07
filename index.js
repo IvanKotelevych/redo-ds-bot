@@ -94,8 +94,8 @@ function playSong(guildId, song) {
         '--format', 'bestaudio/best',
         '--no-warnings',
         '--prefer-free-formats',
-        '--cookies', cookiesPath,
-        '--extractor-args', 'youtube:player_client=ios,web',
+        '--cookies',
+        cookiesPath,
     ];
 
     const ytDlpProcess = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -146,8 +146,8 @@ function fetchPlaylistEntries(playlistUrl) {
             '--dump-json',
             '--no-warnings',
             '--quiet',
-            '--cookies', cookiesPath,
-            '--extractor-args', 'youtube:player_client=ios,web',
+            '--cookies',
+            cookiesPath,
         ];
 
         const proc = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -181,7 +181,7 @@ function fetchPlaylistEntries(playlistUrl) {
 // Дістає назву одного відео (для відображення в черзі)
 function fetchSingleTitle(url) {
     return new Promise((resolve) => {
-        const args = ['--dump-json', '--no-warnings', '--quiet', '--cookies', cookiesPath, url, '--extractor-args', 'youtube:player_client=android,web',];
+        const args = ['--dump-json', '--no-warnings', '--quiet', '--cookies', cookiesPath, url];
         const proc = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'ignore'] });
         let stdout = '';
         proc.stdout.on('data', (data) => { stdout += data; });
