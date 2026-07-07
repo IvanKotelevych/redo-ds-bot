@@ -55,6 +55,7 @@ function createQueue(guildId, connection, textChannel, voiceChannel) {
     connection.subscribe(player);
 
     player.on(AudioPlayerStatus.Idle, () => {
+        killCurrentProcesses(queue);
         queue.songs.shift();
         if (queue.songs.length > 0) {
             playSong(guildId, queue.songs[0]);
@@ -68,6 +69,7 @@ function createQueue(guildId, connection, textChannel, voiceChannel) {
 
     player.on('error', (error) => {
         console.error(`[player error]: ${error.message}`);
+        killCurrentProcesses(queue);
         queue.textChannel.send('❌ Помилка під час відтворення, пропускаю трек.');
         queue.songs.shift();
         if (queue.songs.length > 0) {
@@ -104,7 +106,11 @@ function playSong(guildId, song) {
         console.error(`[yt-dlp stderr]: ${data}`);
     });
     ytDlpProcess.on('error', (err) => {
-        console.error('[yt-dlp process error]:', err);
+        console.error('[yt-dlp process error]:', err.message);
+    });
+    // Захист від необроблених помилок на потоці stdout yt-dlp
+    ytDlpProcess.stdout.on('error', (err) => {
+        console.error('[yt-dlp stdout stream error]:', err.message);
     });
 
     const ffmpegProcess = spawn(ffmpeg, [
@@ -120,8 +126,22 @@ function playSong(guildId, song) {
     ffmpegProcess.stderr.on('data', (data) => {
         console.error(`[ffmpeg stderr]: ${data}`);
     });
+    ffmpegProcess.on('error', (err) => {
+        console.error('[ffmpeg process error]:', err.message);
+    });
+    // Критично: обробники помилок на всіх задіяних потоках, інакше EPIPE валить весь бот
+    ffmpegProcess.stdin.on('error', (err) => {
+        console.error('[ffmpeg stdin stream error]:', err.message);
+    });
+    ffmpegProcess.stdout.on('error', (err) => {
+        console.error('[ffmpeg stdout stream error]:', err.message);
+    });
 
     ytDlpProcess.stdout.pipe(ffmpegProcess.stdin);
+
+    // Зберігаємо посилання на процеси, щоб можна було примусово вбити їх при skip/stop/зміні треку
+    queue.currentYtDlp = ytDlpProcess;
+    queue.currentFfmpeg = ffmpegProcess;
 
     const resource = createAudioResource(ffmpegProcess.stdout, {
         inputType: StreamType.Raw,
@@ -129,6 +149,17 @@ function playSong(guildId, song) {
 
     queue.player.play(resource);
     queue.textChannel.send(`🎵 Відтворення розпочато: **${song.title}**`);
+}
+
+function killCurrentProcesses(queue) {
+    if (queue.currentYtDlp && !queue.currentYtDlp.killed) {
+        queue.currentYtDlp.kill('SIGKILL');
+    }
+    if (queue.currentFfmpeg && !queue.currentFfmpeg.killed) {
+        queue.currentFfmpeg.kill('SIGKILL');
+    }
+    queue.currentYtDlp = null;
+    queue.currentFfmpeg = null;
 }
 
 // Витягує ID плейлиста з посилання (параметр list=...)
@@ -320,6 +351,7 @@ client.on('messageCreate', async (message) => {
             return message.reply('❌ Зараз нічого не грає.');
         }
         message.reply('⏭️ Пропускаю трек...');
+        killCurrentProcesses(queue);
         queue.player.stop();
     }
 
@@ -347,6 +379,7 @@ client.on('messageCreate', async (message) => {
     if (command === 'stop') {
         const queue = getQueue(guildId);
         if (queue) {
+            killCurrentProcesses(queue);
             queue.songs = [];
             queue.player.stop();
             if (queue.connection.state.status !== VoiceConnectionStatus.Destroyed) {
@@ -356,6 +389,10 @@ client.on('messageCreate', async (message) => {
             message.reply('👋 Бувай! Відтворення зупинено.');
         }
     }
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('[uncaughtException]:', err.message);
 });
 
 client.login(TOKEN);
