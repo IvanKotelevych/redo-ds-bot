@@ -259,16 +259,16 @@ client.on('messageCreate', async (message) => {
     const guildId = message.guild.id;
 
     if (command === 'play') {
-        const url = args[0];
+        const query = args.join(' '); // ← об'єднуємо всі слова разом (для пошуку і для URL однаково)
         const voiceChannel = message.member.voice.channel;
         let queue = getQueue(guildId);
 
-        if (!url) {
+        if (!query) {
             if (queue && queue.player.state.status === AudioPlayerStatus.Paused) {
                 queue.player.unpause();
                 return message.reply('▶️ Відтворення продовжено.');
             }
-            return message.reply('❌ Вкажи посилання на YouTube відео, або спочатку постав щось на паузу.');
+            return message.reply('❌ Вкажи посилання на YouTube відео або назву пісні, або спочатку постав щось на паузу.');
         }
 
         if (!voiceChannel) {
@@ -278,19 +278,29 @@ client.on('messageCreate', async (message) => {
         try {
             queue = ensureQueue(guildId, voiceChannel, message.channel, message);
 
-            // Прибираємо всі зайві параметри (в т.ч. list=), щоб гарантовано взяти лише одне відео
-            const videoIdMatch = url.match(/(?:v=|youtu\.be\/)([^&]+)/);
-            const cleanUrl = videoIdMatch
-                ? `https://www.youtube.com/watch?v=${videoIdMatch[1]}`
-                : url.split('&')[0];
+            const isUrl = /^https?:\/\//i.test(query);
+
+            let songUrl;
+            if (isUrl) {
+                // Прибираємо зайві параметри (в т.ч. list=), щоб гарантовано взяти лише одне відео
+                const videoIdMatch = query.match(/(?:v=|youtu\.be\/)([^&]+)/);
+                songUrl = videoIdMatch
+                    ? `https://www.youtube.com/watch?v=${videoIdMatch[1]}`
+                    : query.split('&')[0];
+            } else {
+                // Це не URL — шукаємо перший результат на YouTube
+                songUrl = `ytsearch1:${query}`;
+            }
 
             const wasEmpty = queue.songs.length === 0;
             if (!wasEmpty) {
                 message.reply('⏳ Додаю трек у чергу...');
+            } else if (!isUrl) {
+                message.reply(`🔎 Шукаю: **${query}**...`);
             }
 
-            const title = await fetchSingleTitle(cleanUrl);
-            queue.songs.push({ url: cleanUrl, title });
+            const title = await fetchSingleTitle(songUrl);
+            queue.songs.push({ url: songUrl, title });
 
             if (!wasEmpty) {
                 message.channel.send(`➕ Додано в чергу: **${title}**`);
